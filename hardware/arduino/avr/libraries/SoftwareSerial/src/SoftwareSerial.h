@@ -68,6 +68,11 @@ private:
   uint16_t _buffer_overflow:1;
   uint16_t _inverse_logic:1;
 
+  uint8_t _num_bits:3;
+  uint8_t _parity:2;
+  uint8_t _extra_stop_bits:1;
+  uint8_t _base_num_bits:4;
+
   // static data
   static uint8_t _receive_buffer[_SS_MAX_RX_BUFF]; 
   static volatile uint8_t _receive_buffer_tail;
@@ -91,7 +96,8 @@ public:
   // public methods
   SoftwareSerial(uint8_t receivePin, uint8_t transmitPin, bool inverse_logic = false);
   ~SoftwareSerial();
-  void begin(long speed);
+  void begin(long speed) { begin(speed, SERIAL_8N1); }
+  void begin(long speed, uint8_t mode);
   bool listen();
   void end();
   bool isListening() { return this == active_object; }

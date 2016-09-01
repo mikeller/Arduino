@@ -155,13 +155,15 @@ void SoftwareSerial::recv()
     DebugPulse(_DEBUG_PIN2, 1);
 
     // Read each of the 8 bits
-    for (uint8_t i=8; i > 0; --i)
+    for (uint8_t i = 0; i < _base_num_bits; i++)
     {
       tunedDelay(_rx_delay_intrabit);
-      d >>= 1;
-      DebugPulse(_DEBUG_PIN2, 1);
-      if (rx_pin_read())
-        d |= 0x80;
+	  if (i < _num_bits) {
+		d >>= 1;
+		DebugPulse(_DEBUG_PIN2, 1);
+		if (rx_pin_read())
+			d |= 0x80;
+	  }
     }
 
     if (_inverse_logic)
@@ -301,7 +303,7 @@ uint16_t SoftwareSerial::subtract_cap(uint16_t num, uint16_t sub) {
 // Public methods
 //
 
-void SoftwareSerial::begin(long speed)
+void SoftwareSerial::begin(long speed, uint8_t mode)
 {
   _rx_delay_centering = _rx_delay_intrabit = _rx_delay_stopbit = _tx_delay = 0;
 
@@ -362,6 +364,11 @@ void SoftwareSerial::begin(long speed)
     // can be used inside the ISR without costing too much time.
     _pcint_maskreg = digitalPinToPCMSK(_receivePin);
     _pcint_maskvalue = _BV(digitalPinToPCMSKbit(_receivePin));
+
+	_num_bits = ((mode >> 1) & 0x02) + 5;
+	_extra_stop_bits = (mode >> 3) & 0x01;
+	_parity = (mode >> 4) & 0x02;
+	_base_num_bits = _num_bits + ((_parity == 0) ? 0 : 1) + _extra_stop_bits;
 
     tunedDelay(_tx_delay); // if we were low this establishes the end
   }
