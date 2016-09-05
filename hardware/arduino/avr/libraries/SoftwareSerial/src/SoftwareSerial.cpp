@@ -43,6 +43,7 @@ http://arduiniana.org.
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <util/delay_basic.h>
+#include <util/parity.h>
 
 //
 // Statics
@@ -139,7 +140,7 @@ void SoftwareSerial::recv()
     ::);
 #endif  
 
-  uint8_t d = 0;
+  uint16_t d = 0;
 
   // If RX line is high, then we don't see any start bit
   // so interrupt is probably not for us
@@ -154,22 +155,13 @@ void SoftwareSerial::recv()
     tunedDelay(_rx_delay_centering);
     DebugPulse(_DEBUG_PIN2, 1);
 
-    //Load the config values
-    uint8_t num_bits = _num_bits;
-    uint8_t frame_num_bits = _frame_num_bits;
-    // Currently ignored, since no error signaling implemented
-    //uint8_t parity = _parity; 
-
     // Read each of the 8 bits
-    for (uint8_t i = 0; i < frame_num_bits; i++)
-    {
+    for (uint8_t i = _num_info_bits; i > 0; --i) {
       tunedDelay(_rx_delay_intrabit);
-	  if (i < num_bits) {
-		d >>= 1;
-		DebugPulse(_DEBUG_PIN2, 1);
-		if (rx_pin_read())
-			d |= 0x80;
-	  }
+      d >>= 1;
+      DebugPulse(_DEBUG_PIN2, 1);
+      if (rx_pin_read())
+        d |= _new_bit_mask;
     }
 
     if (_inverse_logic)
@@ -189,13 +181,16 @@ void SoftwareSerial::recv()
       _buffer_overflow = true;
     }
 
+    if (_extra_stop_bit) {
+      tunedDelay(_rx_delay_intrabit);
+    }
+
     // skip the stop bit
     tunedDelay(_rx_delay_stopbit);
     DebugPulse(_DEBUG_PIN1, 1);
 
     // Re-enable interrupts when we're sure to be inside the stop bit
     setRxIntMsk(true);
-
   }
 
 #if GCC_VERSION < 40302
@@ -371,10 +366,15 @@ void SoftwareSerial::begin(long speed, uint8_t mode)
     _pcint_maskreg = digitalPinToPCMSK(_receivePin);
     _pcint_maskvalue = _BV(digitalPinToPCMSKbit(_receivePin));
 
-	_num_bits = ((mode >> 1) & 0x03) + 5;
-	uint8_t extra_stop_bits = (mode >> 3) & 0x01;
-	_parity = (mode >> 4) & 0x02;
-	_frame_num_bits = _num_bits + ((_parity == 0) ? 0 : 1) + extra_stop_bits;
+	uint8_t num_bits = ((mode >> 1) & 0x03) + 5;
+    _extra_stop_bit = (mode >> 3) & 0x01;
+    _parity_odd = (mode >> 4) & 0x01;
+    _parity = (mode >> 5) & 0x01;
+
+    _num_info_bits = _num_bits + ((_parity == 0) ? 0 : 1);
+    _new_bit_mask = 1 << (_num_info_bits - 1);
+    _data_mask = (1 << num_bits) - 1;
+    _parity_mask = parity ? (1 << num_bits) : 0;
 
     tunedDelay(_tx_delay); // if we were low this establishes the end
   }
@@ -412,8 +412,15 @@ int SoftwareSerial::read()
     return -1;
 
   // Read from "head"
-  uint8_t d = _receive_buffer[_receive_buffer_head]; // grab next byte
+  uint16_t d = _receive_buffer[_receive_buffer_head]; // grab next byte
   _receive_buffer_head = (_receive_buffer_head + 1) % _SS_MAX_RX_BUFF;
+
+  uint8_t parity_bit = (d >> (_num_info_bits - 1)) & 0x01;
+  d = d & _data_bit_mask;
+  if (_parity && ((_parity_odd ^ parity_bit != parity_even_bit(d))) {
+	  d = d | 0x0100;
+  }
+
   return d;
 }
 

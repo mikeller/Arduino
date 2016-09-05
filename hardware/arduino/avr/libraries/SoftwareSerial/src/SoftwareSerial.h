@@ -68,12 +68,15 @@ private:
   uint16_t _buffer_overflow:1;
   uint16_t _inverse_logic:1;
 
-  uint8_t _num_bits:4;
-  uint8_t _parity:2;
-  uint8_t _frame_num_bits:4;
+  uint8_t _extra_stop_bit: 1;
+  uint8_t _parity_odd: 1;
+  uint8_t _parity: 1;
+  uint8_t _num_info_bits: 4;
+  uint16_t _new_bit_mask;
+  uint16_t _data_mask;
 
   // static data
-  static uint8_t _receive_buffer[_SS_MAX_RX_BUFF]; 
+  static uint16_t _receive_buffer[_SS_MAX_RX_BUFF];
   static volatile uint8_t _receive_buffer_tail;
   static volatile uint8_t _receive_buffer_head;
   static SoftwareSerial *active_object;
