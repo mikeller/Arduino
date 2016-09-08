@@ -49,7 +49,7 @@ http://arduiniana.org.
 // Statics
 //
 SoftwareSerial *SoftwareSerial::active_object = 0;
-uint8_t SoftwareSerial::_receive_buffer[_SS_MAX_RX_BUFF]; 
+uint16_t SoftwareSerial::_receive_buffer[_SS_MAX_RX_BUFF]; 
 volatile uint8_t SoftwareSerial::_receive_buffer_tail = 0;
 volatile uint8_t SoftwareSerial::_receive_buffer_head = 0;
 
@@ -161,7 +161,7 @@ void SoftwareSerial::recv()
       d >>= 1;
       DebugPulse(_DEBUG_PIN2, 1);
       if (rx_pin_read())
-        d |= _new_bit_mask;
+        d |= _last_bit_mask;
     }
 
     if (_inverse_logic)
@@ -371,10 +371,9 @@ void SoftwareSerial::begin(long speed, uint8_t mode)
     _parity_odd = (mode >> 4) & 0x01;
     _parity = (mode >> 5) & 0x01;
 
-    _num_info_bits = _num_bits + ((_parity == 0) ? 0 : 1);
-    _new_bit_mask = 1 << (_num_info_bits - 1);
+    _num_info_bits = num_bits + ((_parity == 0) ? 0 : 1);
+    _last_bit_mask = 1 << (_num_info_bits - 1);
     _data_mask = (1 << num_bits) - 1;
-    _parity_mask = parity ? (1 << num_bits) : 0;
 
     tunedDelay(_tx_delay); // if we were low this establishes the end
   }
@@ -415,9 +414,9 @@ int SoftwareSerial::read()
   uint16_t d = _receive_buffer[_receive_buffer_head]; // grab next byte
   _receive_buffer_head = (_receive_buffer_head + 1) % _SS_MAX_RX_BUFF;
 
-  uint8_t parity_bit = (d >> (_num_info_bits - 1)) & 0x01;
-  d = d & _data_bit_mask;
-  if (_parity && ((_parity_odd ^ parity_bit != parity_even_bit(d))) {
+  uint8_t parity_bit = (d & _last_bit_mask) ? 0x01 : 0x00;
+  d = d & _data_mask;
+  if (_parity && (_parity_odd ^ parity_bit) != parity_even_bit(d)) {
 	  d = d | 0x0100;
   }
 
@@ -449,9 +448,13 @@ size_t SoftwareSerial::write(uint8_t b)
   uint8_t oldSREG = SREG;
   bool inv = _inverse_logic;
   uint16_t delay = _tx_delay;
+  uint16_t data = b;
+  if (_parity) {
+    data = data | (_parity_odd ^ parity_even_bit(data)) ? _last_bit_mask : 0x00;
+  }
 
   if (inv)
-    b = ~b;
+    data = ~data;
 
   cli();  // turn off interrupts for a clean txmit
 
@@ -464,15 +467,15 @@ size_t SoftwareSerial::write(uint8_t b)
   tunedDelay(delay);
 
   // Write each of the 8 bits
-  for (uint8_t i = 8; i > 0; --i)
+  for (uint8_t i = _num_info_bits; i > 0; --i)
   {
-    if (b & 1) // choose bit
+    if (data & 1) // choose bit
       *reg |= reg_mask; // send 1
     else
       *reg &= inv_mask; // send 0
 
     tunedDelay(delay);
-    b >>= 1;
+    data >>= 1;
   }
 
   // restore pin to natural state
@@ -482,6 +485,11 @@ size_t SoftwareSerial::write(uint8_t b)
     *reg |= reg_mask;
 
   SREG = oldSREG; // turn interrupts back on
+
+  if (_extra_stop_bit) {
+    tunedDelay(_tx_delay);
+  }
+
   tunedDelay(_tx_delay);
   
   return 1;

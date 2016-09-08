@@ -72,7 +72,7 @@ private:
   uint8_t _parity_odd: 1;
   uint8_t _parity: 1;
   uint8_t _num_info_bits: 4;
-  uint16_t _new_bit_mask;
+  uint16_t _last_bit_mask;
   uint16_t _data_mask;
 
   // static data
